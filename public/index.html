@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meeting Agent</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span> Meeting Agent</div>
+    <div id="configNote" class="config-note"></div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <form id="joinForm" class="card join">
+        <h2>Join a meeting</h2>
+        <label>Google Meet link
+          <input id="url" type="text" placeholder="https://meet.google.com/abc-defg-hij" required autocomplete="off" />
+        </label>
+        <label>Meeting title <span class="opt">optional</span>
+          <input id="title" type="text" placeholder="Weekly sync" autocomplete="off" />
+        </label>
+        <label>Bot name <span class="opt">optional</span>
+          <input id="botName" type="text" autocomplete="off" />
+        </label>
+        <button type="submit" id="joinBtn" class="primary">Send bot to meeting</button>
+        <p id="joinError" class="error" hidden></p>
+        <p class="hint">The bot asks to join; admit it from the meeting. It turns on captions, records who said what, and writes notes when the meeting ends.</p>
+      </form>
+
+      <div class="list-head">Meetings</div>
+      <ul id="meetingList" class="meeting-list"></ul>
+    </aside>
+
+    <main id="detail" class="detail">
+      <div class="empty">
+        <h2>No meeting selected</h2>
+        <p>Paste a Google Meet link on the left to send the bot, or pick a past meeting.</p>
+      </div>
+    </main>
+  </div>
+
+  <template id="detailTpl">
+    <section class="detail-head">
+      <div class="title-row">
+        <h1 class="m-title"></h1>
+        <div class="actions">
+          <button class="stop danger" hidden>Leave meeting</button>
+          <span class="stt" hidden>
+            <select class="stt-provider" aria-label="Transcription service"></select>
+            <button class="stt-run">Transcribe audio</button>
+          </span>
+          <button class="regen" hidden>Regenerate notes</button>
+        </div>
+      </div>
+      <div class="status-row">
+        <span class="pill"></span>
+        <span class="status-detail"></span>
+      </div>
+      <div class="warnings" hidden></div>
+      <div class="facts"></div>
+      <div class="downloads"></div>
+    </section>
+    <nav class="tabs">
+      <button data-tab="transcript" class="active">Transcript</button>
+      <button data-tab="notes">Notes</button>
+      <button data-tab="audio" hidden>Audio transcript</button>
+      <button data-tab="log">Activity</button>
+    </nav>
+    <section class="tab-body" data-body="transcript">
+      <div class="toolbar">
+        <input class="search" type="search" placeholder="Search transcript" />
+        <label class="autoscroll"><input type="checkbox" checked /> Follow live</label>
+      </div>
+      <div class="transcript"></div>
+    </section>
+    <section class="tab-body markdown" data-body="notes" hidden></section>
+    <section class="tab-body markdown" data-body="audio" hidden></section>
+    <section class="tab-body" data-body="log" hidden><ol class="log"></ol></section>
+  </template>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

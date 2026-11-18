@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Secrets: API keys live in .env (copy .env.example to create it)
+.env
+.env.*
+!.env.example
+
+# Private data: meeting recordings, transcripts, notes, and the bot's Google sign-in profile
+data/
+.bot-profile/
+*.webm
+captions-debug-*
+error.png
+
+# Generated files
+.assets/
+*.tmp
+*.log
+
+# Local editor / tool settings
+.claude/settings.local.json
+.vscode/
+.DS_Store
+Thumbs.db
