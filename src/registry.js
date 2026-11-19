@@ -20,12 +20,30 @@ export class Registry {
     }
   }
 
+  /** Forget finished meetings whose folder was deleted outside the app (e.g. in Explorer). */
+  prune() {
+    for (const [id, s] of this.sessions) {
+      if (!s.active && !fs.existsSync(path.join(s.dir, 'meta.json'))) this.sessions.delete(id);
+    }
+  }
+
   list() {
+    this.prune();
     return [...this.sessions.values()].map((s) => s.summary()).sort((a, b) => b.createdAt - a.createdAt);
   }
 
   get(id) {
+    this.prune();
     return this.sessions.get(id);
+  }
+
+  /** Delete a finished meeting and all its files. */
+  remove(id) {
+    const s = this.sessions.get(id);
+    if (!s) return false;
+    s.remove();
+    this.sessions.delete(id);
+    return true;
   }
 
   activeBot() {

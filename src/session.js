@@ -579,6 +579,28 @@ export class MeetingSession extends EventEmitter {
     })();
   }
 
+  /** Delete this meeting's folder (recordings, transcripts, notes). Not allowed while it runs. */
+  remove() {
+    if (this.active || this.busy) {
+      const err = new Error('This meeting is still running or busy. Stop it first.');
+      err.status = 409;
+      throw err;
+    }
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    try {
+      fs.rmSync(this.dir, { recursive: true, force: true });
+    } catch (err) {
+      const e = new Error(
+        /EBUSY|EPERM/.test(err.code)
+          ? 'A file of this meeting is open in another program (e.g. an audio player). Close it and try again.'
+          : `Could not delete the meeting: ${err.message}`,
+      );
+      e.status = 409;
+      throw e;
+    }
+    this.broadcast('deleted', { id: this.meta.id });
+  }
+
   regenerateNotes() {
     return this.runJob('writing notes', () => this.makeNotes());
   }

@@ -101,6 +101,14 @@ app.post(
   }),
 );
 
+app.delete(
+  '/api/meetings/:id',
+  handle((req, res) => {
+    if (!registry.remove(req.params.id)) return res.status(404).json({ error: 'Meeting not found' });
+    res.json({ ok: true });
+  }),
+);
+
 // Live updates (Server-Sent Events)
 app.get('/api/meetings/:id/events', (req, res) => {
   const s = sessionOr404(req, res);

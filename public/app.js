@@ -79,6 +79,8 @@ async function api(path, opts = {}) {
 async function loadMeetings() {
   try {
     state.meetings = await api('/api/meetings');
+    // The open meeting was deleted (here or in Explorer): close it.
+    if (state.selected && !state.meetings.some((m) => m.id === state.selected)) clearSelection();
     renderList();
   } catch { /* server restarting */ }
 }
@@ -131,6 +133,17 @@ $('#joinForm').addEventListener('submit', async (e) => {
 });
 
 // ---------- detail ----------
+function clearSelection() {
+  state.es?.close();
+  state.es = null;
+  state.selected = null;
+  state.view = null;
+  history.replaceState(null, '', location.pathname);
+  $('#detail').innerHTML =
+    '<div class="empty"><h2>No meeting selected</h2><p>Paste a Google Meet link on the left to send the bot, or pick a past meeting.</p></div>';
+  renderList();
+}
+
 function select(id) {
   state.selected = id;
   state.es?.close();
@@ -179,6 +192,10 @@ function select(id) {
     renderMarkdown('audio');
     renderHead();
   });
+  es.addEventListener('deleted', () => {
+    if (state.selected === id) clearSelection();
+    loadMeetings();
+  });
   es.addEventListener('log', (e) => {
     if (!state.view) return;
     state.view.log.push(JSON.parse(e.data));
@@ -226,6 +243,19 @@ function wireDetail(root) {
   $('.stt-provider', root).innerHTML = providers
     .map((p) => `<option value="${esc(p.id)}" ${p.id === state.config.defaultTranscriptionProvider ? 'selected' : ''}>${esc(p.label)}</option>`)
     .join('');
+  $('.delete', root).addEventListener('click', async (e) => {
+    const title = state.view?.meta.title || 'this meeting';
+    if (!confirm(`Delete "${title}"?\n\nThis permanently removes its recording, transcripts and notes from this computer.`)) return;
+    e.target.disabled = true;
+    try {
+      await api(`/api/meetings/${encodeURIComponent(state.selected)}`, { method: 'DELETE' });
+      clearSelection();
+      await loadMeetings();
+    } catch (ex) {
+      alert(ex.message);
+      e.target.disabled = false;
+    }
+  });
   $('.search', root).addEventListener('input', (e) => {
     state.search = e.target.value.trim().toLowerCase();
     renderTranscript();
@@ -275,6 +305,8 @@ function renderHead() {
   }
 
   const busy = Boolean(m.busy);
+  $('.delete').hidden = ACTIVE.has(m.status);
+  $('.delete').disabled = busy;
   $('.stop').hidden = !['starting', 'joining', 'waiting_admission', 'in_meeting'].includes(m.status);
   const regen = $('.regen');
   regen.hidden = ACTIVE.has(m.status) || (!m.segmentCount && m.audioTranscriptStatus !== 'done');
