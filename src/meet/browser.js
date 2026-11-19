@@ -30,25 +30,31 @@ export async function launchBotBrowser({ log = () => {} } = {}) {
     ],
   };
 
+  // Browsers to try in order. Microsoft Edge is on every Windows PC, so it backs up Chrome there.
   const channel = config.browserChannel && config.browserChannel !== 'chromium' ? config.browserChannel : undefined;
-  try {
-    return await chromium.launchPersistentContext(config.profileDir, { ...options, channel });
-  } catch (err) {
-    const msg = String(err?.message || err);
-    if (/ProcessSingleton|profile.*in use|user data directory is already in use|lock/i.test(msg)) {
-      throw new Error(
-        `The bot profile (${config.profileDir}) is already in use. Close the other bot or Chrome window using it and try again.`,
-      );
-    }
-    if (!channel) throw err;
-    log(`Could not start ${channel} (${msg.split('\n')[0]}). Falling back to Playwright Chromium.`);
+  const channels = [channel];
+  if (channel === 'chrome' && process.platform === 'win32') channels.push('msedge');
+  if (channel) channels.push(undefined); // Playwright's own Chromium
+
+  for (let i = 0; i < channels.length; i++) {
+    const ch = channels[i];
     try {
-      return await chromium.launchPersistentContext(config.profileDir, options);
-    } catch (err2) {
-      if (/Executable doesn't exist/i.test(String(err2?.message))) {
-        throw new Error('No browser available. Install Google Chrome, or run: npx playwright install chromium');
+      return await chromium.launchPersistentContext(config.profileDir, { ...options, channel: ch });
+    } catch (err) {
+      const msg = String(err?.message || err);
+      if (/ProcessSingleton|profile.*in use|user data directory is already in use|lock/i.test(msg)) {
+        throw new Error(
+          `The bot profile (${config.profileDir}) is already in use. Close the other bot or Chrome window using it and try again.`,
+        );
       }
-      throw err2;
+      const next = channels[i + 1];
+      if (i === channels.length - 1) {
+        if (/Executable doesn't exist/i.test(msg)) {
+          throw new Error('No browser available. Install Google Chrome, or run: npx playwright install chromium');
+        }
+        throw err;
+      }
+      log(`Could not start ${ch || 'Chromium'} (${msg.split('\n')[0]}). Trying ${next || 'Playwright Chromium'} instead.`);
     }
   }
 }

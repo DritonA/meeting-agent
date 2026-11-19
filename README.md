@@ -55,6 +55,32 @@ You can reopen past meetings from the sidebar and use **Regenerate notes** at an
 
 If anything goes wrong with capture, the meeting page shows a red **capture problem** box. This covers captions turning off, the recording going silent or restarting, and the bot dropping out of the call. The box stays after the meeting (the meeting shows "Finished with issues"), and the problems are listed at the top of `notes.md`, so a meeting with missing parts never looks complete.
 
+### Windows desktop app
+
+The same app, as a normal Windows program: no terminal, no Node.js, no project folder. Install it on any Windows PC.
+
+**Install.** Run `Meeting Agent-<version>-setup.exe`. It installs for the current user (no admin rights needed) and adds Start-menu and desktop shortcuts. Or use `Meeting Agent-<version>-portable.exe`, which runs without installing (for example from a USB stick). The files are not code-signed, so Windows SmartScreen may warn first. Click **More info → Run anyway**.
+
+**First start.** Click **Open settings** in the welcome message, and the settings file opens in Notepad. Put your key after `ANTHROPIC_API_KEY=`, save, and click **Restart now**. After that it works just like the web app. It needs Google Chrome or Microsoft Edge on the PC. Edge comes with Windows and is used when Chrome isn't installed.
+
+**Menus:**
+
+- **File → Settings…** (Ctrl+,) opens the settings file. Saving it offers a restart.
+- **File → Open meetings folder** opens the saved transcripts, notes and recordings.
+- **Bot → Sign in to Google account…** signs the bot in (same as `npm run login`).
+
+Everything the desktop app keeps is in `%APPDATA%\Meeting Agent`: settings (`.env`), the bot's browser profile, and `data\meetings`. It is separate from the project folder, so the desktop app and `npm start` don't share meetings or settings. If you close the app while the bot is in a meeting, it asks first, then leaves the call and saves the transcript and notes before it closes.
+
+**Build the installer** (on Windows, from the project folder):
+
+```bash
+pnpm install
+pnpm dist:win        # writes dist/Meeting Agent-<version>-setup.exe and -portable.exe
+pnpm desktop         # or: run the desktop app from source, without building
+```
+
+The installer never includes your `.env`, the bot profile or any meetings. Each PC gets its own settings on first start.
+
 ### Command line
 
 ```bash
@@ -123,3 +149,4 @@ Main pieces of the code:
 - `src/notes/claude.js` asks Claude for the notes.
 - `src/stt/` holds the audio transcription services (Soniox, Deepgram) and matches their speakers to names.
 - `src/server.js` and `public/` are the web app.
+- `electron/main.js` is the Windows desktop app. It runs `src/server.js` inside the app and shows `public/` in its own window.

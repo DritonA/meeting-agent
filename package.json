@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Bot that joins Google Meet by URL, records a speaker-attributed transcript, and writes meeting notes with Claude.",
   "type": "module",
+  "main": "electron/main.js",
   "private": true,
   "engines": {
     "node": ">=18.17"
@@ -12,7 +13,9 @@
     "join": "node src/cli.js",
     "login": "node src/login.js",
     "notes": "node src/regenerate.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "desktop": "electron .",
+    "dist:win": "electron-builder --win"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.10.0",
@@ -21,5 +24,44 @@
     "express": "^4.21.2",
     "marked": "^12.0.2",
     "playwright": "^1.48.0"
+  },
+  "devDependencies": {
+    "electron": "^45.3.4",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.meetingagent.desktop",
+    "productName": "Meeting Agent",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**",
+      "src/**",
+      "public/**",
+      ".env.example",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/playwright/**",
+      "node_modules/playwright-core/**"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Meeting Agent",
+      "artifactName": "${productName}-${version}-setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    }
   }
 }

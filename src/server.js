@@ -1,12 +1,13 @@
 import express from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { config, ROOT_DIR } from './config.js';
 import { Registry } from './registry.js';
 import { fileType } from './session.js';
 import { availableProviders, defaultProvider } from './stt/index.js';
 
-const registry = new Registry();
+export const registry = new Registry();
 const app = express();
 
 // This app is for this computer only. Reject other host names (blocks DNS-rebinding tricks), and
@@ -143,20 +144,38 @@ app.get('/api/meetings/:id/files/:name', (req, res) => {
   res.sendFile(file);
 });
 
-app.listen(config.port, '127.0.0.1', () => {
-  console.log(`\nMeeting Agent is running: http://localhost:${config.port}\n`);
-  console.log(`Meetings are saved in ${config.dataDir}`);
-  if (!config.anthropicConfigured) console.log('Note: ANTHROPIC_API_KEY is not set; AI notes will be skipped (transcripts still work).');
-});
+/** Start the web server on this computer only. Resolves with the port it listens on (0 = any free port). */
+export function startServer(port = config.port) {
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, '127.0.0.1', () => resolve(server.address().port));
+    server.once('error', reject);
+  });
+}
 
-let shuttingDown = false;
-process.on('SIGINT', async () => {
-  if (shuttingDown) process.exit(1);
-  shuttingDown = true;
-  const active = registry.activeBot();
-  if (!active) process.exit(0);
-  console.log('\nLeaving the meeting and saving everything (press Ctrl+C again to force quit)...');
-  active.stop();
-  await active.done;
-  process.exit(0);
-});
+// `npm start` runs this file directly; the desktop app imports it and calls startServer() itself.
+const isMain = process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
+if (isMain) {
+  startServer().then(
+    (port) => {
+      console.log(`\nMeeting Agent is running: http://localhost:${port}\n`);
+      console.log(`Meetings are saved in ${config.dataDir}`);
+      if (!config.anthropicConfigured) console.log('Note: ANTHROPIC_API_KEY is not set; AI notes will be skipped (transcripts still work).');
+    },
+    (err) => {
+      console.error(err.code === 'EADDRINUSE' ? `Port ${config.port} is already in use. Set another PORT in .env.` : err.message);
+      process.exit(1);
+    },
+  );
+
+  let shuttingDown = false;
+  process.on('SIGINT', async () => {
+    if (shuttingDown) process.exit(1);
+    shuttingDown = true;
+    const active = registry.activeBot();
+    if (!active) process.exit(0);
+    console.log('\nLeaving the meeting and saving everything (press Ctrl+C again to force quit)...');
+    active.stop();
+    await active.done;
+    process.exit(0);
+  });
+}

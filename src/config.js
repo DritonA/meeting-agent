@@ -1,8 +1,16 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Where the app's code lives (public/, node_modules/). Read-only inside the desktop app.
 export const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+// Where settings (.env) and data live. The desktop app sets MEETING_AGENT_HOME to its own folder
+// (%APPDATA%\Meeting Agent); from the command line it is the project folder, as before.
+const HOME = process.env.MEETING_AGENT_HOME?.trim();
+export const DATA_HOME = HOME ? path.resolve(HOME) : ROOT_DIR;
+export const ENV_FILE = HOME ? path.join(DATA_HOME, '.env') : path.resolve(process.cwd(), '.env');
+dotenv.config({ path: ENV_FILE });
 
 const str = (name, fallback) => {
   const v = process.env[name];
@@ -18,7 +26,7 @@ const bool = (name, fallback) => {
   if (['0', 'false', 'no', 'off'].includes(v)) return false;
   return fallback;
 };
-const dir = (name, fallback) => path.resolve(ROOT_DIR, str(name, fallback));
+const dir = (name, fallback) => path.resolve(DATA_HOME, str(name, fallback));
 
 export const config = {
   botName: str('BOT_NAME', 'Meeting Notetaker'),
@@ -47,5 +55,5 @@ export const config = {
 
   port: num('PORT', 3000),
   dataDir: dir('DATA_DIR', './data/meetings'),
-  assetsDir: path.join(ROOT_DIR, '.assets'),
+  assetsDir: path.join(DATA_HOME, '.assets'),
 };

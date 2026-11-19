@@ -23,3 +23,6 @@ error.png
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Desktop app builds
+dist/
