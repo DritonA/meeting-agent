@@ -1,31 +1,32 @@
 // Desktop app (Windows): runs the same web server inside the app and shows the UI in its own window.
-// Settings, the bot's Google profile and all meetings live in %APPDATA%\Meeting Agent, so the app
-// works the same on any PC without a terminal or a project folder.
-import { app, BrowserWindow, Menu, dialog, shell } from 'electron';
-import { spawn } from 'node:child_process';
+// Settings (API keys encrypted), the bot's Google profile and all meetings live in
+// %APPDATA%\Meeting Agent, so the app works the same on any PC without a terminal or a project folder.
+import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SettingsStore } from './settings-store.js';
 
-const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const APP_DIR = path.resolve(HERE, '..');
 const APP_NAME = 'Meeting Agent';
+// Settings that only apply on the next start (the server and meeting list are set up once).
+const RESTART_KEYS = ['PORT', 'DATA_DIR'];
 
 app.setName(APP_NAME);
-app.setPath('userData', path.join(app.getPath('appData'), APP_NAME));
+// MEETING_AGENT_APPDATA: use another folder for settings and data (e.g. a separate test setup).
+const customHome = process.env.MEETING_AGENT_APPDATA?.trim();
+app.setPath('userData', customHome ? path.resolve(customHome) : path.join(app.getPath('appData'), APP_NAME));
 if (process.platform === 'win32') app.setAppUserModelId('com.meetingagent.desktop');
 
 const HOME = app.getPath('userData');
 process.env.MEETING_AGENT_HOME = HOME;
-
-// First run: create the settings file from the template, so there is something to fill in.
 fs.mkdirSync(HOME, { recursive: true });
-const envFile = path.join(HOME, '.env');
-const firstRun = !fs.existsSync(envFile);
-if (firstRun) fs.copyFileSync(path.join(APP_DIR, '.env.example'), envFile);
 
 let win = null;
+let settingsWin = null;
 let quitting = false; // set once it is safe to close (nothing left to save)
-let registry, config, openSignInWindow;
+let store, startup, registry, config, applySettings, openSignInWindow;
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -42,8 +43,14 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 async function main() {
-  // Imported only now: config.js reads MEETING_AGENT_HOME when it loads.
-  ({ config } = await import('../src/config.js'));
+  // Settings first: config.js reads MEETING_AGENT_HOME when it loads, and the server's meeting list
+  // is built from config.dataDir as soon as server.js is imported.
+  store = new SettingsStore(HOME, path.join(APP_DIR, '.env.example'));
+  await store.init();
+  const firstRun = store.isNew;
+  ({ config, applySettings } = await import('../src/config.js'));
+  startup = store.resolved();
+  applySettings(startup);
   const server = await import('../src/server.js');
   ({ openSignInWindow } = await import('../src/login.js'));
   registry = server.registry;
@@ -58,6 +65,7 @@ async function main() {
   }
   const appUrl = `http://127.0.0.1:${port}`;
 
+  setUpSettingsIpc();
   Menu.setApplicationMenu(buildMenu());
   win = new BrowserWindow({
     width: 1300,
@@ -65,8 +73,12 @@ async function main() {
     minWidth: 800,
     minHeight: 560,
     title: APP_NAME,
-    autoHideMenuBar: false,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    webPreferences: {
+      preload: path.join(HERE, 'app-preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
   });
 
   // Links to other sites (e.g. a Meet link) open in the normal browser, not inside the app.
@@ -89,8 +101,7 @@ async function main() {
   win.on('closed', () => (win = null));
 
   await win.loadURL(appUrl);
-  watchSettings();
-  if (firstRun || !config.anthropicConfigured) promptForSettings(firstRun);
+  if (firstRun || !config.anthropicConfigured) openSettingsWindow({ welcome: firstRun });
 }
 
 app.on('window-all-closed', () => app.quit());
@@ -99,6 +110,98 @@ app.on('before-quit', (event) => {
   event.preventDefault();
   confirmQuit();
 });
+
+// ---------- settings window ----------
+
+let welcomeOnce = false;
+function openSettingsWindow({ welcome = false } = {}) {
+  welcomeOnce = welcome;
+  if (settingsWin) return settingsWin.focus();
+  settingsWin = new BrowserWindow({
+    parent: win || undefined,
+    modal: Boolean(win),
+    width: 780,
+    height: 760,
+    minWidth: 520,
+    minHeight: 480,
+    show: false,
+    title: `Settings · ${APP_NAME}`,
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(HERE, 'settings-preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  settingsWin.setMenu(null);
+  settingsWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  settingsWin.webContents.on('will-navigate', (event) => event.preventDefault());
+  settingsWin.once('ready-to-show', () => settingsWin.show());
+  settingsWin.on('closed', () => (settingsWin = null));
+  settingsWin.loadFile(path.join(HERE, 'settings.html'));
+}
+
+function setUpSettingsIpc() {
+  // Only the settings window may read or change settings; only the main window may open it.
+  const fromSettings = (event) => settingsWin && event.sender === settingsWin.webContents;
+
+  ipcMain.on('settings:open', (event) => {
+    if (win && event.sender === win.webContents) openSettingsWindow();
+  });
+  ipcMain.on('settings:close', (event) => {
+    if (fromSettings(event)) settingsWin.close();
+  });
+
+  ipcMain.handle('settings:load', (event) => {
+    if (!fromSettings(event)) throw new Error('Not allowed');
+    const welcome = welcomeOnce;
+    welcomeOnce = false;
+    return { ...store.forDisplay(), welcome };
+  });
+
+  ipcMain.handle('settings:pick-folder', async (event, current) => {
+    if (!fromSettings(event)) throw new Error('Not allowed');
+    const { canceled, filePaths } = await dialog.showOpenDialog(settingsWin, {
+      title: 'Folder for meetings',
+      defaultPath: typeof current === 'string' && path.isAbsolute(current) ? current : config.dataDir,
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    return canceled ? null : filePaths[0];
+  });
+
+  ipcMain.handle('settings:save', async (event, changes) => {
+    if (!fromSettings(event)) throw new Error('Not allowed');
+    let restartKeys;
+    try {
+      restartKeys = await store.update(changes);
+    } catch (err) {
+      return { error: err.message };
+    }
+    // Use the new settings right away, except those that need a restart.
+    const now = store.resolved();
+    for (const key of RESTART_KEYS) now[key] = startup[key];
+    applySettings(now);
+    win?.webContents.send('settings:changed');
+
+    const restartNeeded = RESTART_KEYS.some((key) => store.resolved()[key] !== startup[key]);
+    if (restartKeys.length) {
+      const { response } = await dialog.showMessageBox(settingsWin || win, {
+        type: 'question',
+        buttons: ['Restart now', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+        title: APP_NAME,
+        message: 'Restart to use the new port or meetings folder?',
+        detail: 'Your other changes are already in use.',
+      });
+      if (response === 0) setImmediate(() => confirmQuit({ relaunch: true }));
+    }
+    return { ok: true, restartNeeded };
+  });
+}
+
+// ---------- quitting ----------
 
 /** Meetings that still need the app running: the bot is in a call, or notes are being written. */
 function busySessions() {
@@ -143,62 +246,7 @@ function quitNow(relaunch) {
   app.quit();
 }
 
-function openSettings() {
-  // .env files have no default program on Windows, so open it in Notepad there.
-  if (process.platform === 'win32') spawn('notepad.exe', [envFile], { detached: true, stdio: 'ignore' }).unref();
-  else shell.openPath(envFile);
-}
-
-async function promptForSettings(isFirstRun) {
-  const { response } = await dialog.showMessageBox(win, {
-    type: 'info',
-    buttons: ['Open settings', 'Later'],
-    defaultId: 0,
-    cancelId: 1,
-    title: APP_NAME,
-    message: isFirstRun ? `Welcome to ${APP_NAME}` : 'AI notes are not set up yet',
-    detail:
-      'To get AI meeting notes, put your Anthropic API key after ANTHROPIC_API_KEY= in the settings file, ' +
-      'then save it. Transcripts and recordings work without it.\n\n' +
-      'Settings are opened from the File menu at any time.',
-  });
-  if (response === 0) openSettings();
-}
-
-// Settings are read at start-up, so offer a restart when the file is saved.
-function watchSettings() {
-  let timer = null;
-  let asking = false;
-  let last = fs.readFileSync(envFile, 'utf8');
-  fs.watchFile(envFile, { interval: 1500 }, async () => {
-    clearTimeout(timer);
-    timer = setTimeout(async () => {
-      let now;
-      try {
-        now = fs.readFileSync(envFile, 'utf8');
-      } catch {
-        return;
-      }
-      if (now === last || asking || !win) return;
-      last = now;
-      asking = true;
-      const busy = busySessions().length > 0;
-      const { response } = await dialog.showMessageBox(win, {
-        type: 'question',
-        buttons: busy ? ['OK'] : ['Restart now', 'Later'],
-        defaultId: 0,
-        cancelId: busy ? 0 : 1,
-        title: APP_NAME,
-        message: 'Settings saved.',
-        detail: busy
-          ? 'They apply the next time the app starts. Restart it from the File menu after the meeting.'
-          : 'Restart the app to use the new settings.',
-      });
-      asking = false;
-      if (!busy && response === 0) confirmQuit({ relaunch: true });
-    }, 500);
-  });
-}
+// ---------- bot sign-in and menu ----------
 
 async function signInBot() {
   if (registry.activeBot()) {
@@ -213,7 +261,7 @@ async function signInBot() {
   await dialog.showMessageBox(win, {
     type: 'info',
     title: APP_NAME,
-    message: "Sign the bot into a Google account",
+    message: 'Sign the bot into a Google account',
     detail:
       "A browser window opens on the bot's own profile (separate from your personal browser). " +
       'Sign in to the account the bot should join meetings as, then close that window.\n\n' +
@@ -235,8 +283,8 @@ function buildMenu() {
     {
       label: 'File',
       submenu: [
+        { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => openSettingsWindow() },
         { label: 'Open meetings folder', click: () => openFolder(config.dataDir) },
-        { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: openSettings },
         { label: 'Restart', click: () => confirmQuit({ relaunch: true }) },
         { type: 'separator' },
         { label: 'Quit', accelerator: 'CmdOrCtrl+Q', click: () => confirmQuit() },

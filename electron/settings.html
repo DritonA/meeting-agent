@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:" />
+  <title>Settings · Meeting Agent</title>
+  <link rel="stylesheet" href="../public/style.css" />
+  <link rel="stylesheet" href="settings.css" />
+</head>
+<body>
+  <form id="form" class="settings" novalidate>
+    <header class="s-head">
+      <h1>Settings</h1>
+      <p id="welcome" class="welcome" hidden>
+        Welcome! Add your Anthropic API key to get AI meeting notes. Everything else can stay as it is.
+        Transcripts and recordings work without a key.
+      </p>
+    </header>
+
+    <div class="s-body">
+      <section class="card" data-group="notes">
+        <h2>AI notes</h2>
+        <div class="fields"></div>
+      </section>
+      <section class="card" data-group="bot">
+        <h2>Bot</h2>
+        <div class="fields"></div>
+      </section>
+      <section class="card" data-group="stt">
+        <h2>Audio transcription <span class="opt">optional</span></h2>
+        <p class="section-hint">After the meeting, the recording can also be transcribed by Soniox or Deepgram to fill gaps the captions missed.</p>
+        <div class="fields"></div>
+      </section>
+      <details class="card advanced" data-group="advanced">
+        <summary><h2>Advanced</h2></summary>
+        <div class="fields"></div>
+      </details>
+      <p class="security-note" id="securityNote"></p>
+    </div>
+
+    <footer class="s-foot">
+      <p id="status" class="status" role="status"></p>
+      <button type="button" id="cancel">Cancel</button>
+      <button type="submit" id="save" class="primary">Save</button>
+    </footer>
+  </form>
+  <script src="settings-ui.js"></script>
+</body>
+</html>

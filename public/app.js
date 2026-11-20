@@ -448,13 +448,37 @@ setInterval(() => {
 }, 15000);
 
 // ---------- boot ----------
-(async function init() {
+// In the Windows desktop app, settings are managed in the app (Settings button) instead of .env.
+const desktop = window.meetingAgentDesktop;
+
+async function loadConfig() {
   const cfg = await api('/api/config').catch(() => null);
   state.config = cfg;
-  if (cfg) {
-    $('#botName').placeholder = cfg.botName;
-    if (!cfg.notesConfigured) $('#configNote').textContent = 'ANTHROPIC_API_KEY not set: transcripts work, AI notes are skipped.';
+  if (!cfg) return;
+  $('#botName').placeholder = cfg.botName;
+  const note = $('#configNote');
+  note.replaceChildren();
+  if (cfg.notesConfigured) return;
+  if (desktop) {
+    const link = Object.assign(document.createElement('button'), { type: 'button', className: 'linkish', textContent: 'Add your Anthropic API key' });
+    link.addEventListener('click', () => desktop.openSettings());
+    note.append('AI notes are off. ', link, ' to turn them on.');
+  } else {
+    note.textContent = 'ANTHROPIC_API_KEY not set: transcripts work, AI notes are skipped.';
   }
+}
+
+(async function init() {
+  if (desktop) {
+    $('#settingsBtn').hidden = false;
+    $('#settingsBtn').addEventListener('click', () => desktop.openSettings());
+    desktop.onSettingsChanged(async () => {
+      await loadConfig();
+      // Reopen the open meeting so it picks up the change (e.g. a newly added transcription service).
+      if (state.selected) select(state.selected);
+    });
+  }
+  await loadConfig();
   await loadMeetings();
   setInterval(loadMeetings, 5000);
   const fromHash = decodeURIComponent(location.hash.slice(1));

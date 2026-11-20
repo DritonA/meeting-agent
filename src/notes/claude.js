@@ -52,7 +52,8 @@ language the meeting was held in.`;
  *           transcript: string, audioTranscript?: string }} input
  */
 export async function generateNotes(input) {
-  const client = new Anthropic();
+  // No key in config = the SDK reads it from the environment (.env), as before.
+  const client = new Anthropic({ apiKey: config.anthropicApiKey || undefined });
   const parts = [
     'Here is the meeting to summarize.',
     '',

@@ -61,15 +61,23 @@ The same app, as a normal Windows program: no terminal, no Node.js, no project f
 
 **Install.** Run `Meeting Agent-<version>-setup.exe`. It installs for the current user (no admin rights needed) and adds Start-menu and desktop shortcuts. Or use `Meeting Agent-<version>-portable.exe`, which runs without installing (for example from a USB stick). The files are not code-signed, so Windows SmartScreen may warn first. Click **More info → Run anyway**.
 
-**First start.** Click **Open settings** in the welcome message, and the settings file opens in Notepad. Put your key after `ANTHROPIC_API_KEY=`, save, and click **Restart now**. After that it works just like the web app. It needs Google Chrome or Microsoft Edge on the PC. Edge comes with Windows and is used when Chrome isn't installed.
+**First start.** The **Settings** window opens. Paste your Anthropic API key and click **Save**, and AI notes are on right away. No restart and no files to edit. Everything else can stay as it is. The app needs Google Chrome or Microsoft Edge on the PC. Edge comes with Windows and is used when Chrome isn't installed.
 
-**Menus:**
+**Settings.** Open them with the **Settings** button at the top right, or **File → Settings…** (Ctrl+,). They cover everything `.env` has: API keys (Anthropic, Soniox, Deepgram), notes model and language, bot name, caption language, browser, audio recording, transcription service and language, and under **Advanced** the timeouts, meetings folder and port. Changes apply when you save. Only the meetings folder and port ask for a restart.
 
-- **File → Settings…** (Ctrl+,) opens the settings file. Saving it offers a restart.
+**How keys are protected:**
+
+- API keys are encrypted with Windows' data protection (DPAPI, through Electron `safeStorage`) and saved in `settings.json`. Only your Windows account on that PC can decrypt them. A copy of the file on another PC or account is useless; the app asks for the key again there.
+- After saving, a key is never shown again. The window shows only "Saved securely · ends in …abcd", with **Replace** and **Remove**.
+- Keys stay in the app's main process. They don't go through the local web server, aren't put in environment variables (so the bot's browser never gets them), and aren't written to logs.
+- The settings window is a local page with a strict content security policy. It can only load, save and pick a folder. The main window can only open it.
+
+**Other menus:**
+
 - **File → Open meetings folder** opens the saved transcripts, notes and recordings.
 - **Bot → Sign in to Google account…** signs the bot in (same as `npm run login`).
 
-Everything the desktop app keeps is in `%APPDATA%\Meeting Agent`: settings (`.env`), the bot's browser profile, and `data\meetings`. It is separate from the project folder, so the desktop app and `npm start` don't share meetings or settings. If you close the app while the bot is in a meeting, it asks first, then leaves the call and saves the transcript and notes before it closes.
+Everything the desktop app keeps is in `%APPDATA%\Meeting Agent`: `settings.json`, the bot's browser profile, and `data\meetings`. It is separate from the project folder, so the desktop app and `npm start` don't share meetings or settings. The desktop app ignores `.env`. To use a different folder, for example a separate test setup, set the `MEETING_AGENT_APPDATA` environment variable to it before starting the app. If you close the app while the bot is in a meeting, it asks first, then leaves the call and saves the transcript and notes before it closes.
 
 **Build the installer** (on Windows, from the project folder):
 
@@ -79,7 +87,7 @@ pnpm dist:win        # writes dist/Meeting Agent-<version>-setup.exe and -portab
 pnpm desktop         # or: run the desktop app from source, without building
 ```
 
-The installer never includes your `.env`, the bot profile or any meetings. Each PC gets its own settings on first start.
+The installer never includes your `.env`, keys, the bot profile or any meetings. Each PC gets its own settings on first start.
 
 ### Command line
 
@@ -149,4 +157,4 @@ Main pieces of the code:
 - `src/notes/claude.js` asks Claude for the notes.
 - `src/stt/` holds the audio transcription services (Soniox, Deepgram) and matches their speakers to names.
 - `src/server.js` and `public/` are the web app.
-- `electron/main.js` is the Windows desktop app. It runs `src/server.js` inside the app and shows `public/` in its own window.
+- `electron/main.js` is the Windows desktop app. It runs `src/server.js` inside the app and shows `public/` in its own window. `electron/settings-store.js` keeps its settings (keys encrypted), and `electron/settings.*` is the settings window.
